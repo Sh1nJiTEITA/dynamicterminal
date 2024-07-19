@@ -217,12 +217,12 @@ class TWindow:
                     self._wsplit[1].hsplit(per))
 
         left_col = int(self._w * per)
-        left = TWindow(self._r,
+        left = self.__class__(self._r,
                        self._c,
                        self._h,
                        left_col)
         
-        right = TWindow(self._r, 
+        right = self.__class__(self._r, 
                         self._c + left_col,
                         self._h,
                         self._w - left_col)
@@ -238,12 +238,12 @@ class TWindow:
                     self._wsplit[1].wsplit(per))
 
         top_row = int(self._h * per)
-        top = TWindow(self._r,
+        top = self.__class__(self._r,
                       self._c,
                       top_row,
                       self._w)
         
-        bot = TWindow(self._r + top_row, 
+        bot = self.__class__(self._r + top_row, 
                       self._c,
                       self._h - top_row,
                       self._w)
@@ -255,7 +255,7 @@ class TWindow:
     
     def __repr__(self):
         return\
-        f'TWindow('\
+        f'{self.__class__.__name__}('\
         f'(r,c)=({self._r}, {self._c}), '\
         f'(h,w)=({self._h}, {self._w}), '\
         f'ishsplt={True if self._hsplit else False}'\
@@ -273,35 +273,27 @@ class TLog(TWindow):
         length = len(msg)
         sng_ln_len = self._w - 2
         if self.msg_coo: 
-            start_row = self.msg_coo[-1][2] + 1
+            start_row = self.msg_coo[-1][2] + 1 
         else: 
             start_row = 0
 
-        # if length <= self._w:
         if length <= sng_ln_len:
             self.msg_coo.append( (start_row, 0, 
                                   start_row, length ) )
-        # elif length > self._w:
         elif length > sng_ln_len:
-            end_row = int(length / sng_ln_len)
+            rows = int(length / sng_ln_len)
             self.msg_coo.append( (start_row, 0,
-                                  end_row,  length - (end_row - start_row) * sng_ln_len) )
+                                  start_row + rows,  length - rows * sng_ln_len) )
         coo = self.msg_coo[-1]
-        print(coo)
         ind = 0
         for row in range(coo[0], coo[2] + 1): 
-            try: 
-                if row == coo[2]: 
-                    ran = range(coo[1], coo[3])
-                else: 
-                    ran = range(sng_ln_len)
-                for col in ran:
-                    self._data[row][col] = msg[ind]#msg[col + self._w * row]
-                    ind += 1
-            except Exception: 
-                continue
-                # print(self._data)
-                # break
+            if row == coo[2]: 
+                ran = range(coo[1], coo[3])
+            else: 
+                ran = range(sng_ln_len)
+            for col in ran:
+                self._data[row][col] = msg[ind]
+                ind += 1
 
 
 
@@ -318,12 +310,14 @@ import time
 def main():
     TC.switch_buffer()
     # p = TWindow(5,5,30,70)
-    p = TLog(3,3, 10, 6+2)
-    # p.add_msg(f'Hi!')
-    p.add_msg(f'{"T" * 6}')
-    # p.add_msg(f'Hi!')
-    # p.add_msg(f'Hi!')
-    # p.add_msg(f'Hi!')
+    p = TLog(3,3, 20, 30)
+    j = 0
+    for i in range(0, 40, 5):
+        f = ' '.join([str(k) for k in range(0, i)])
+        p.add_msg(f'{j}){f}')
+        j += 1
+    # p.add_msg(f'{"!" * 30}')
+    # p.add_msg(f'{"-" * 30}')
     p.draw_frame()
     p.draw_text()
 
