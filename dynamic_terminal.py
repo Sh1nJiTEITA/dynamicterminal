@@ -1,8 +1,9 @@
+from dataclasses import dataclass
 import enum
 import sys
 import os
-from typing import Optional, Union, Tuple
-
+from typing import Optional, Union, Tuple, List
+from datetime import datetime
 
 if sys.platform == "win32":
     import ctypes
@@ -148,21 +149,65 @@ class TC:
     def flush():
         sys.stdout.flush()
 
+# Default table chars
+dtc = { 
+    'cross'     : '┼',
+
+    'left_bot'  : '└',
+    'left_top'  : '┌',
+    'right_bot' : '┘',
+    'right_top' : '┐',
+
+    'top'       : '┬',
+    'left'      : '├',
+    'bot'       : '┴',
+    'right'     : '┤',
+
+    'h' : '│',
+    'w' : '─',
+}
+
 
 import numpy as np
 
 
 
 class TWindow:
-    def __init__(self, r, c, h, w):
+    def __init__(self, r, c, h, w, title='', *args, **kwargs):
         self._h = h
         self._w = w
         self._r = r 
         self._c = c
+        self._title = title
+
+        self._args = args
+        self._kwargs = kwargs
+
         self._data = np.full((h - 2, w - 2), '', dtype='U1')
         self._hsplit: Optional[Tuple[TWindow, TWindow]] = None
         self._wsplit: Optional[Tuple[TWindow, TWindow]] = None
     
+    def full(self):
+        return self.__class__(1,1, *_get_terminal_res(), self._title, *self._args, **self._kwargs)
+   
+    def set_title(self, title): 
+        self._title = title
+
+    def clear(self) :
+        if self._hsplit: 
+            self._hsplit[0].clear()
+            self._hsplit[1].clear()
+            return
+        elif self._wsplit:
+            self._wsplit[0].clear()
+            self._wsplit[1].clear()
+            return
+        self._data = np.full((self._h - 2, self._w - 2), '', dtype='U1')
+    
+    @staticmethod
+    def __split_str(s: str, n: int): 
+        return [s[i:i+n] for i in range(0, len(s), n)]
+
     def draw_frame(self, isroot=False):
         if isroot:
             if self._hsplit:
@@ -173,21 +218,57 @@ class TWindow:
                 self._wsplit[0].draw_frame(isroot)
                 self._wsplit[1].draw_frame(isroot)
                 return
-            
 
         TC.go_cursor_to_pos(self._r, self._c)
-        TC.write_line(f"┌{'─' * (self._w - 2)}┐", end='')
+        str_num = self._r
+        if self._title: 
+            splitted_title = self.__split_str(self._title, self._w - 2)
+            
+            TC.write_line(f"{dtc['left_top']}"\
+                          f"{dtc['w'] * (self._w - 2)}"\
+                          f"{dtc['right_top']}", end='')
+            for substr in splitted_title:
+                str_num += 1
+                TC.go_cursor_to_pos(str_num, self._c)
+                if len(substr) >= self._w - 2:
+                    TC.write_line(f"{dtc['h']}{substr:{self._w - len(substr)}}{dtc['h']}")
+                else: 
+                    TC.write_line(f"{dtc['h']}{substr:{self._w-2}}{dtc['h']}")
+            str_num += 1
+
+            TC.go_cursor_to_pos(str_num, self._c)
+            TC.write_line(f"{dtc['left']}{dtc['w'] * (self._w - 2)}{dtc['right']}")
+            str_num += 1
+            ran = range(str_num, self._r + self._h - 1)
+        else:
+            TC.write_line(f"{dtc['left_top']}{dtc['w'] * (self._w - 2)}{dtc['right_top']}", end='')
+            ran = range(str_num + 1, self._r + self._h - 1)
+
         TC.flush()
-        for _ in range( self._r + 1, self._r + self._h - 1):
+        for _ in ran:
             TC.go_cursor_to_pos(_, self._c)
-            TC.write_line(f"│{' ' * (self._w - 2)}│", end='')
+            TC.write_line(f"{dtc['h']}{' ' * (self._w - 2)}{dtc['h']}", end='')
         TC.go_cursor_to_pos(self._r + self._h - 1, self._c)
-        TC.write_line(f"└{'─' * (self._w - 2)}┘", end='')
+        TC.write_line(f"{dtc['left_bot']}{dtc['w'] * (self._w - 2)}{dtc['right_bot']}", end='')
         TC.flush()
         
-    def draw_text(self):
+    def draw_text(self, isroot=False):
+        if isroot:
+            if self._hsplit:
+                self._hsplit[0].draw_text(isroot)
+                self._hsplit[1].draw_text(isroot)
+                return
+            if self._wsplit:
+                self._wsplit[0].draw_text(isroot)
+                self._wsplit[1].draw_text(isroot)
+                return
+        if self._title: 
+            num_rows = len(self.__split_str(self._title, self._w - 2)) + 1
+        else:
+            num_rows = 0
+
         for i,row in enumerate(self._data):
-            TC.go_cursor_to_pos(self._r + 1 + i, self._c + 1)
+            TC.go_cursor_to_pos(self._r + 1 + i + num_rows, self._c + 1)
             TC.write_line(''.join(row), end='')
         TC.flush()
 
@@ -218,14 +299,22 @@ class TWindow:
 
         left_col = int(self._w * per)
         left = self.__class__(self._r,
-                       self._c,
-                       self._h,
-                       left_col)
+                              self._c,
+                              self._h,
+                              left_col,
+                              self._title,
+                              *self._args,
+                              **self._kwargs
+        )
         
         right = self.__class__(self._r, 
-                        self._c + left_col,
-                        self._h,
-                        self._w - left_col)
+                               self._c + left_col,
+                               self._h,
+                               self._w - left_col,
+                               self._title,
+                               *self._args,
+                               **self._kwargs
+        )
         self._hsplit = left, right
         return left, right
     
@@ -241,12 +330,18 @@ class TWindow:
         top = self.__class__(self._r,
                       self._c,
                       top_row,
-                      self._w)
+                      self._w,
+                      *self._args, 
+                      **self._kwargs
+        )
         
         bot = self.__class__(self._r + top_row, 
                       self._c,
                       self._h - top_row,
-                      self._w)
+                      self._w,
+                      *self._args,
+                      **self._kwargs
+        )
         self._wsplit = top, bot
         return top, bot
     
@@ -262,33 +357,90 @@ class TWindow:
         f'iswsplt={True if self._wsplit else False})'\
 
 class TLog(TWindow):
-    def __init__(self, row, col, h, w):
+    @dataclass
+    class LogPos: 
+        begin_row: int = -1
+        begin_col: int = -1
+        end_row: int = -1
+        end_col: int = -1
+        
+
+    def __init__(self, row, col, h, w, title='', msg_format=r'[%H:%M:%S] {msg}', *args, **kwargs):
         """
             ( start_row, start_col, end_row, end_col )
         """
-        super().__init__(row, col, h, w)
+        kwargs['msg_format'] = msg_format
+        super().__init__(row, col, h, w, title, *args, **kwargs)
+        self.msg_coo: List[TLog.LogPos] = []
+        self.msg_format = msg_format
+        self._is_time_format = self._ckeck_is_time_format(msg_format)
+    
+    @staticmethod
+    def _ckeck_is_time_format(format: str): 
+        if any([part in format for part in ['%Y', '%m', '%d', '%H', '%M', '%S']]):
+            return True 
+        return False
+    
+    def clear(self): 
+        super().clear()
         self.msg_coo = []
 
-    def add_msg(self, msg: str):
+    def add_msg(self, msg: str): 
+        if self._is_time_format: 
+            self._add_msg(datetime.now().strftime(self.msg_format.format(msg=msg)))
+        else:
+            self._add_msg(self.msg_format.format(msg=msg))
+    
+    def _redirect_strs(self, new: LogPos):
+        # print(self.msg_coo[-1].end_row, self._h - 2)
+        if self.msg_coo[-1].end_row  - self.msg_coo[0].begin_row ==\
+            self._h - 2:
+
+            rows_num = new.end_row - new.begin_row
+            rows_to_erase = []
+            for i in range(len(self.msg_coo)):
+                l_coo = self.msg_coo[i]
+                delta = l_coo.end_row - l_coo.begin_row
+                if delta <= rows_num:
+                    rows_to_erase += [
+                        i for i in range( l_coo.begin_row, l_coo.end_row + 1 )
+                    ]
+                    rows_num -= delta
+                if rows_num <= 0: 
+                    break
+            for coo in self.msg_coo:
+                print(coo)
+
+    def _add_msg(self, msg: str):
         length = len(msg)
         sng_ln_len = self._w - 2
         if self.msg_coo: 
-            start_row = self.msg_coo[-1][2] + 1 
+            start_row = self.msg_coo[-1].end_row + 1 
         else: 
             start_row = 0
-
+    
         if length <= sng_ln_len:
-            self.msg_coo.append( (start_row, 0, 
-                                  start_row, length ) )
-        elif length > sng_ln_len:
+            new_log_pos = TLog.LogPos(begin_row=start_row,
+                                      begin_col=0,
+                                      end_row=start_row,
+                                      end_col=length)
+        
+        else: # length > sng_ln_len:
             rows = int(length / sng_ln_len)
-            self.msg_coo.append( (start_row, 0,
-                                  start_row + rows,  length - rows * sng_ln_len) )
+            new_log_pos = TLog.LogPos(begin_row=start_row,
+                                      begin_col=0,
+                                      end_row=start_row + rows,
+                                      end_col= length - rows * sng_ln_len)
+        
+        self.msg_coo.append(new_log_pos)
+        self._redirect_strs(new_log_pos)
+
+
         coo = self.msg_coo[-1]
         ind = 0
-        for row in range(coo[0], coo[2] + 1): 
-            if row == coo[2]: 
-                ran = range(coo[1], coo[3])
+        for row in range(coo.begin_row, coo.end_row + 1): 
+            if row == coo.end_row: 
+                ran = range(coo.begin_col, coo.end_col)
             else: 
                 ran = range(sng_ln_len)
             for col in ran:
@@ -296,30 +448,36 @@ class TLog(TWindow):
                 ind += 1
 
 
-
-
 class TFullWindow(TWindow):
     def __init__(self):
         super().__init__(1,1,*_get_terminal_res())
-    
 
 
-   
+
 import time
 
 def main():
-    TC.switch_buffer()
-    # p = TWindow(5,5,30,70)
-    p = TLog(3,3, 20, 30)
+
+    # sys.stdout.write('\033[?1049h')
+    # TC.switch_buffer()
+    # p = TWindow(5,5,30,70, title=f'{"1" * 100}')
+    p = TLog(3,3,30,50,msg_format=r'...{msg}', title='hi')
+    p = p.full()
+
+    l, r = p.hsplit()
+
     j = 0
-    for i in range(0, 40, 5):
-        f = ' '.join([str(k) for k in range(0, i)])
-        p.add_msg(f'{j}){f}')
-        j += 1
-    # p.add_msg(f'{"!" * 30}')
-    # p.add_msg(f'{"-" * 30}')
-    p.draw_frame()
-    p.draw_text()
+    
+    while True:
+        for i in range(0, 30):
+            f = ' '.join([str(k) for k in range(0, i)])
+            l.add_msg(f'{f}')
+            j += 1
+
+        # p.draw_frame(isroot=True)
+        # p.draw_text(isroot=True)
+        time.sleep(.05)
+        # p.clear()
 
 
     
@@ -339,7 +497,7 @@ def main():
     # TC.clear_buffer()
     #
     time.sleep(5)
-    TC.switch_buffer()
+    # TC.switch_buffer()
     
 
 if __name__ == '__main__':
