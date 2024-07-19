@@ -159,7 +159,7 @@ class TWindow:
         self._w = w
         self._r = r 
         self._c = c
-        self._data = np.full((h - 2, w - 2), '!', dtype='U1')
+        self._data = np.full((h - 2, w - 2), '', dtype='U1')
         self._hsplit: Optional[Tuple[TWindow, TWindow]] = None
         self._wsplit: Optional[Tuple[TWindow, TWindow]] = None
     
@@ -261,6 +261,51 @@ class TWindow:
         f'ishsplt={True if self._hsplit else False}'\
         f'iswsplt={True if self._wsplit else False})'\
 
+class TLog(TWindow):
+    def __init__(self, row, col, h, w):
+        """
+            ( start_row, start_col, end_row, end_col )
+        """
+        super().__init__(row, col, h, w)
+        self.msg_coo = []
+
+    def add_msg(self, msg: str):
+        length = len(msg)
+        sng_ln_len = self._w - 2
+        if self.msg_coo: 
+            start_row = self.msg_coo[-1][2] + 1
+        else: 
+            start_row = 0
+
+        # if length <= self._w:
+        if length <= sng_ln_len:
+            self.msg_coo.append( (start_row, 0, 
+                                  start_row, length ) )
+        # elif length > self._w:
+        elif length > sng_ln_len:
+            end_row = int(length / sng_ln_len)
+            self.msg_coo.append( (start_row, 0,
+                                  end_row,  length - (end_row - start_row) * sng_ln_len) )
+        coo = self.msg_coo[-1]
+        print(coo)
+        ind = 0
+        for row in range(coo[0], coo[2] + 1): 
+            try: 
+                if row == coo[2]: 
+                    ran = range(coo[1], coo[3])
+                else: 
+                    ran = range(sng_ln_len)
+                for col in ran:
+                    self._data[row][col] = msg[ind]#msg[col + self._w * row]
+                    ind += 1
+            except Exception: 
+                continue
+                # print(self._data)
+                # break
+
+
+
+
 class TFullWindow(TWindow):
     def __init__(self):
         super().__init__(1,1,*_get_terminal_res())
@@ -273,26 +318,32 @@ import time
 def main():
     TC.switch_buffer()
     # p = TWindow(5,5,30,70)
-    p = TFullWindow()
-    # p.draw_frame()
+    p = TLog(3,3, 10, 6+2)
+    # p.add_msg(f'Hi!')
+    p.add_msg(f'{"T" * 6}')
+    # p.add_msg(f'Hi!')
+    # p.add_msg(f'Hi!')
+    # p.add_msg(f'Hi!')
+    p.draw_frame()
+    p.draw_text()
+
+
+    
+    # p.hsplit()
+    # p.draw_frame(isroot=True)
     # time.sleep(2)
     # TC.clear_buffer()
-    p.hsplit()
-    p.draw_frame(isroot=True)
-    time.sleep(2)
-    TC.clear_buffer()
-
-    p.wsplit()
-    p.draw_frame(isroot=True)
-    time.sleep(2)
-    TC.clear_buffer()
     #
-    p.wsplit()
-    p.draw_frame(isroot=True)
-    time.sleep(2)
-    TC.clear_buffer()
+    # p.wsplit()
+    # p.draw_frame(isroot=True)
+    # time.sleep(2)
+    # TC.clear_buffer()
+    # #
+    # p.wsplit()
+    # p.draw_frame(isroot=True)
+    # time.sleep(2)
+    # TC.clear_buffer()
     #
-
     time.sleep(5)
     TC.switch_buffer()
     
